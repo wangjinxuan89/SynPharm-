@@ -3,7 +3,7 @@ import type { PredictionResult, Task } from '@/types'
 
 export interface DTIPredictRequest {
   smiles: string
-  targetId: string
+  targetSeq: string
 }
 
 export interface PPIPredictRequest {
@@ -12,8 +12,8 @@ export interface PPIPredictRequest {
 }
 
 export interface DDIPredictRequest {
-  drugASmiles: string
-  drugBSmiles: string
+  drugA: string
+  drugB: string
 }
 
 /** 预测结果响应（与后端 PredictResultResponse 对齐） */
@@ -63,6 +63,11 @@ export const predictApi = {
   /** 获取当前用户的预测历史列表（按创建时间倒序） */
   getPredictHistory(): Promise<PredictResultResponse[]> {
     return request.get<PredictResultResponse[]>('/api/predict/history')
+  },
+
+  /** 获取 DDI 训练图内药物（DrugBank ID）列表，供下拉选择 */
+  getDdiDrugs(): Promise<string[]> {
+    return request.get<string[]>('/api/predict/ddi/drugs')
   }
 }
 

@@ -19,10 +19,10 @@
         </header>
 
         <section class="result-detail__metrics">
-          <div class="result-detail__metric">
+          <div v-if="result.bindingAffinity != null" class="result-detail__metric">
             <span class="result-detail__metric-label">结合亲和力</span>
             <span class="result-detail__metric-value">
-              {{ result.bindingAffinity != null ? result.bindingAffinity.toFixed(2) + ' kcal/mol' : 'N/A' }}
+              {{ result.bindingAffinity.toFixed(2) + ' kcal/mol' }}
             </span>
           </div>
           <div class="result-detail__metric">
@@ -31,7 +31,7 @@
           </div>
         </section>
 
-        <section v-if="result.interactions.length" class="result-detail__interactions">
+        <section v-if="(result.interactions || []).length" class="result-detail__interactions">
           <h2 class="result-detail__section-title">相互作用</h2>
           <div
             v-for="(inter, idx) in result.interactions"

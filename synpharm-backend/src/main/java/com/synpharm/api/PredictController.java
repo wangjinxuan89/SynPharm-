@@ -1,5 +1,6 @@
 package com.synpharm.api;
 
+import com.synpharm.client.FastApiClient;
 import com.synpharm.dto.request.DTIPredictRequest;
 import com.synpharm.dto.request.DDIPredictRequest;
 import com.synpharm.dto.request.PPIPredictRequest;
@@ -32,9 +33,12 @@ public class PredictController {
 
     /** 预测服务，处理预测业务逻辑 */
     private final PredictService predictService;
-    
+
     /** JWT工具类，用于解析Token获取用户信息 */
     private final JwtUtils jwtUtils;
+
+    /** FastAPI客户端，用于代理算法引擎的非推理接口（如药物列表） */
+    private final FastApiClient fastApiClient;
 
     /**
      * DTI预测接口
@@ -42,7 +46,7 @@ public class PredictController {
      * <p>药物-靶点相互作用预测，预测小分子药物与蛋白质靶点的结合亲和力。
      * 
      * @param token 请求头中的JWT令牌（Bearer格式）
-     * @param request DTI预测请求，包含SMILES分子表达式和靶点ID
+     * @param request DTI预测请求，包含SMILES分子表达式和靶点氨基酸序列
      * @return 预测结果，包含结合亲和力、置信度、相互作用信息等
      */
     @PostMapping("/dti")
@@ -80,7 +84,7 @@ public class PredictController {
      * <p>药物-药物相互作用预测，预测两种药物之间可能发生的相互作用。
      * 
      * @param token 请求头中的JWT令牌（Bearer格式）
-     * @param request DDI预测请求，包含两种药物的SMILES表达式
+     * @param request DDI预测请求，包含两种药物的DrugBank ID
      * @return 预测结果，包含相互作用类型、风险等级等
      */
     @PostMapping("/ddi")
@@ -91,6 +95,21 @@ public class PredictController {
         Long userId = jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
         PredictResultResponse response = predictService.predictDDI(request, userId);
         return Result.success(response);
+    }
+
+    /**
+     * 获取 DDI 药物列表接口
+     *
+     * <p>代理 FastAPI 返回 DDI 训练图内药物（DrugBank ID）列表，供前端下拉选择。
+     *
+     * @param token 请求头中的JWT令牌（Bearer格式）
+     * @return 药物 ID 列表
+     */
+    @GetMapping("/ddi/drugs")
+    @Operation(summary = "获取DDI药物列表", description = "获取DDI模型训练图内的药物（DrugBank ID）列表")
+    public Result<List<String>> getDdiDrugs(@RequestHeader("Authorization") String token) {
+        jwtUtils.getUserIdFromToken(token.replace("Bearer ", ""));
+        return Result.success(fastApiClient.getDdiDrugs());
     }
 
     /**

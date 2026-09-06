@@ -47,9 +47,34 @@
             <div class="pc__input-block">
               <div class="pc__input-head">
                 <label class="pc__label">{{ getFirstInputLabel() }}</label>
-                <button v-if="firstInputValue" class="pc__clear" @click="clearFirstInput" title="清空">✕</button>
+                <div class="pc__input-actions">
+                  <button v-if="isFirstInputSequence" class="pc__example" @click="fillExampleSequence('first')" title="填入示例序列">示例</button>
+                  <button v-if="firstInputValue && !isDdiMode" class="pc__clear" @click="clearFirstInput" title="清空">✕</button>
+                </div>
               </div>
+              <el-select
+                v-if="isDdiMode"
+                v-model="firstInputValue"
+                filterable
+                clearable
+                class="pc__select"
+                :placeholder="getFirstInputPlaceholder()"
+                :loading="ddiDrugsLoading"
+                @change="validateFirstInput"
+              >
+                <el-option v-for="drug in ddiDrugs" :key="drug" :label="drug" :value="drug" />
+              </el-select>
+              <textarea
+                v-else-if="isFirstInputSequence"
+                v-model="firstInputValue"
+                class="pc__input pc__input--textarea"
+                :class="{ 'pc__input--error': firstInputError }"
+                :placeholder="getFirstInputPlaceholder()"
+                rows="4"
+                @input="validateFirstInput"
+              ></textarea>
               <input
+                v-else
                 v-model="firstInputValue"
                 type="text"
                 class="pc__input"
@@ -59,7 +84,8 @@
               />
               <div class="pc__hint">
                 <span v-if="firstInputError" class="pc__err">{{ firstInputError }}</span>
-                <span v-else-if="firstInputValue" class="pc__ok">✓ 格式有效</span>
+                <span v-else-if="isDdiMode && ddiDrugsError" class="pc__err">{{ ddiDrugsError }}</span>
+                <span v-else-if="firstInputValue" class="pc__ok">{{ isDdiMode ? '✓ 已选择' : '✓ 格式有效' }}</span>
               </div>
             </div>
 
@@ -68,9 +94,34 @@
             <div class="pc__input-block">
               <div class="pc__input-head">
                 <label class="pc__label">{{ getSecondInputLabel() }}</label>
-                <button v-if="secondInputValue" class="pc__clear" @click="clearSecondInput" title="清空">✕</button>
+                <div class="pc__input-actions">
+                  <button v-if="isSecondInputSequence" class="pc__example" @click="fillExampleSequence('second')" title="填入示例序列">示例</button>
+                  <button v-if="secondInputValue && !isDdiMode" class="pc__clear" @click="clearSecondInput" title="清空">✕</button>
+                </div>
               </div>
+              <el-select
+                v-if="isDdiMode"
+                v-model="secondInputValue"
+                filterable
+                clearable
+                class="pc__select"
+                :placeholder="getSecondInputPlaceholder()"
+                :loading="ddiDrugsLoading"
+                @change="validateSecondInput"
+              >
+                <el-option v-for="drug in ddiDrugs" :key="drug" :label="drug" :value="drug" />
+              </el-select>
+              <textarea
+                v-else-if="isSecondInputSequence"
+                v-model="secondInputValue"
+                class="pc__input pc__input--textarea"
+                :class="{ 'pc__input--error': secondInputError }"
+                :placeholder="getSecondInputPlaceholder()"
+                rows="4"
+                @input="validateSecondInput"
+              ></textarea>
               <input
+                v-else
                 v-model="secondInputValue"
                 type="text"
                 class="pc__input"
@@ -80,7 +131,8 @@
               />
               <div class="pc__hint">
                 <span v-if="secondInputError" class="pc__err">{{ secondInputError }}</span>
-                <span v-else-if="secondInputValue" class="pc__ok">✓ 格式有效</span>
+                <span v-else-if="isDdiMode && ddiDrugsError" class="pc__err">{{ ddiDrugsError }}</span>
+                <span v-else-if="secondInputValue" class="pc__ok">{{ isDdiMode ? '✓ 已选择' : '✓ 格式有效' }}</span>
               </div>
             </div>
           </div>
@@ -284,7 +336,7 @@
                 <span class="pc__detail-val">{{ predictionResult.targetId }}</span>
               </div>
               <div
-                v-if="selectedType === 'dti'"
+                v-if="selectedType === 'dti' && predictionResult.bindingAffinity != null"
                 class="pc__detail pc__detail--accent"
               >
                 <span class="pc__detail-label">结合亲和力</span>
@@ -298,7 +350,7 @@
             </div>
           </div>
 
-          <div class="pc__section">
+          <div v-if="(predictionResult.interactions || []).length" class="pc__section">
             <h4 class="pc__section-title">相互作用分析</h4>
             <div class="pc__interactions">
               <div v-for="(it, i) in predictionResult.interactions" :key="i" class="pc__interaction">
@@ -348,7 +400,6 @@ import Sidebar from '@/components/Sidebar.vue'
 import type { PredictionResult } from '@/types'
 
 const selectedType = ref<'ppi' | 'dti' | 'ddi'>('dti')
-const selectedInputType = ref<'pdb' | 'uniprot' | 'smiles' | 'csv'>('smiles')
 const mode = ref<'single' | 'batch' | 'history'>('single')
 
 const firstInputValue = ref('')
@@ -363,6 +414,9 @@ const showAdvancedOptions = ref(false)
 const isLoading = ref(false)
 const predictionResult = ref<PredictionResult | null>(null)
 const predictError = ref('')
+const ddiDrugs = ref<string[]>([])
+const ddiDrugsLoading = ref(false)
+const ddiDrugsError = ref('')
 const router = useRouter()
 const route = useRoute()
 
@@ -372,12 +426,9 @@ const prefilledTargetName = ref('')
 const applyTargetFromQuery = () => {
   const targetId = route.query.targetId
   const targetName = route.query.targetName
-  if (targetId) {
+  if (targetId || targetName) {
     selectedType.value = 'dti'
-    selectedInputType.value = 'uniprot'
-    secondInputValue.value = String(targetId)
-    secondInputError.value = ''
-    prefilledTargetName.value = targetName ? String(targetName) : ''
+    prefilledTargetName.value = targetName ? String(targetName) : (targetId ? String(targetId) : '')
   }
 }
 
@@ -395,8 +446,6 @@ const isValidInput = computed(() => {
 })
 
 const SMILES_REGEX = /^[A-Za-z0-9@+\-\[\]\(\)\{\}.=#$%&\/\\<>~`'*:;]+$/
-const PDB_REGEX = /^[0-9A-Za-z]{4}$/
-const UNIPROT_REGEX = /^[A-Z0-9]{6,10}$/
 
 const validateSMILES = (value: string): string => {
   if (!value) return ''
@@ -405,53 +454,36 @@ const validateSMILES = (value: string): string => {
   return ''
 }
 
-const validatePDB = (value: string): string => {
+const validateProteinSequence = (value: string): string => {
   if (!value) return ''
-  if (!PDB_REGEX.test(value)) return 'PDB ID应为4位字母数字组合'
+  const cleaned = value.replace(/[\s-]+/g, '')
+  if (!cleaned) return '请输入氨基酸序列'
+  if (!/^[A-Z]+$/i.test(cleaned)) return '序列包含非法字符（仅支持氨基酸单字母代码）'
+  if (cleaned.length < 31) return `序列至少需 31 个氨基酸残基（当前 ${cleaned.length} 个）`
   return ''
 }
 
-const validateUniProt = (value: string): string => {
-  if (!value) return ''
-  if (!UNIPROT_REGEX.test(value)) return 'UniProt ID格式无效'
+const validateDdiDrug = (value: string): string => {
+  if (!value) return '请选择药物'
   return ''
 }
 
 const validateFirstInput = () => {
-  if (selectedType.value === 'dti') {
-    firstInputError.value = validateSMILES(firstInputValue.value)
+  if (selectedType.value === 'ppi') {
+    firstInputError.value = validateProteinSequence(firstInputValue.value)
   } else if (selectedType.value === 'ddi') {
+    firstInputError.value = validateDdiDrug(firstInputValue.value)
+  } else {
     firstInputError.value = validateSMILES(firstInputValue.value)
-  } else if (selectedType.value === 'ppi') {
-    if (selectedInputType.value === 'pdb') {
-      firstInputError.value = validatePDB(firstInputValue.value)
-    } else if (selectedInputType.value === 'uniprot') {
-      firstInputError.value = validateUniProt(firstInputValue.value)
-    } else {
-      firstInputError.value = ''
-    }
   }
 }
 
 const validateSecondInput = () => {
-  if (selectedType.value === 'dti') {
-    if (selectedInputType.value === 'pdb') {
-      secondInputError.value = validatePDB(secondInputValue.value)
-    } else if (selectedInputType.value === 'uniprot') {
-      secondInputError.value = validateUniProt(secondInputValue.value)
-    } else {
-      secondInputError.value = ''
-    }
-  } else if (selectedType.value === 'ddi') {
-    secondInputError.value = validateSMILES(secondInputValue.value)
-  } else if (selectedType.value === 'ppi') {
-    if (selectedInputType.value === 'pdb') {
-      secondInputError.value = validatePDB(secondInputValue.value)
-    } else if (selectedInputType.value === 'uniprot') {
-      secondInputError.value = validateUniProt(secondInputValue.value)
-    } else {
-      secondInputError.value = ''
-    }
+  if (selectedType.value === 'ddi') {
+    secondInputError.value = validateDdiDrug(secondInputValue.value)
+  } else {
+    // DTI 第二输入为靶点蛋白序列；PPI 第二输入为蛋白质 B 序列
+    secondInputError.value = validateProteinSequence(secondInputValue.value)
   }
 }
 
@@ -465,6 +497,46 @@ const clearSecondInput = () => {
   secondInputError.value = ''
 }
 
+const isDdiMode = computed(() => selectedType.value === 'ddi')
+const isFirstInputSequence = computed(() => selectedType.value === 'ppi')
+const isSecondInputSequence = computed(() => selectedType.value === 'dti' || selectedType.value === 'ppi')
+
+// 演示用氨基酸序列（均 ≥31 残基）
+const EXAMPLE_SEQUENCES = {
+  dti: 'MQIFVKTLTGKTITLEVEPSDTIENVKAKIQ',
+  ppiA: 'MQIFVKTLTGKTITLEVEPSDTIENVKAKIQ',
+  ppiB: 'MHHHHHHGSGMKETAAAKFERQHMDSSTSAA'
+}
+
+const fillExampleSequence = (target: 'first' | 'second') => {
+  if (target === 'first') {
+    firstInputValue.value = EXAMPLE_SEQUENCES.ppiA
+    validateFirstInput()
+  } else {
+    secondInputValue.value = selectedType.value === 'dti' ? EXAMPLE_SEQUENCES.dti : EXAMPLE_SEQUENCES.ppiB
+    validateSecondInput()
+  }
+}
+
+const loadDdiDrugs = async () => {
+  if (ddiDrugsLoading.value || ddiDrugs.value.length > 0) return
+  ddiDrugsLoading.value = true
+  ddiDrugsError.value = ''
+  try {
+    ddiDrugs.value = await predictApi.getDdiDrugs()
+  } catch (error: unknown) {
+    ddiDrugsError.value = error instanceof Error ? error.message : '药物列表加载失败'
+  } finally {
+    ddiDrugsLoading.value = false
+  }
+}
+
+watch(selectedType, (val) => {
+  if (val === 'ddi') {
+    loadDdiDrugs()
+  }
+})
+
 const getFormSubtitle = () => {
   const subtitles: Record<string, string> = {
     ppi: '分析两个蛋白质之间的相互作用关系',
@@ -477,17 +549,17 @@ const getFormSubtitle = () => {
 const getFirstInputLabel = () => {
   const labels: Record<string, string> = {
     dti: '药物 (SMILES)',
-    ddi: '药物 A (SMILES)',
-    ppi: `蛋白质 A (${selectedInputType.value === 'pdb' ? 'PDB ID' : 'UniProt ID'})`
+    ddi: '药物 A (DrugBank ID)',
+    ppi: '蛋白质 A (氨基酸序列)'
   }
   return labels[selectedType.value] || '输入A'
 }
 
 const getSecondInputLabel = () => {
   const labels: Record<string, string> = {
-    dti: `靶点 (${selectedInputType.value === 'pdb' ? 'PDB ID' : 'UniProt ID'})`,
-    ddi: '药物 B (SMILES)',
-    ppi: `蛋白质 B (${selectedInputType.value === 'pdb' ? 'PDB ID' : 'UniProt ID'})`
+    dti: '靶点蛋白 (氨基酸序列)',
+    ddi: '药物 B (DrugBank ID)',
+    ppi: '蛋白质 B (氨基酸序列)'
   }
   return labels[selectedType.value] || '输入B'
 }
@@ -495,17 +567,17 @@ const getSecondInputLabel = () => {
 const getFirstInputPlaceholder = () => {
   const placeholders: Record<string, string> = {
     dti: '输入药物SMILES表达式，如: CC(=O)OC1=CC=CC=C1C(=O)O',
-    ddi: '输入药物A的SMILES表达式',
-    ppi: selectedInputType.value === 'pdb' ? '输入PDB ID，如: 6M0J' : '输入UniProt ID，如: P0DTC2'
+    ddi: '搜索并选择药物 A',
+    ppi: '粘贴蛋白质 A 的氨基酸序列，至少 31 个残基'
   }
   return placeholders[selectedType.value] || ''
 }
 
 const getSecondInputPlaceholder = () => {
   const placeholders: Record<string, string> = {
-    dti: selectedInputType.value === 'pdb' ? '输入PDB ID，如: 6M0J' : '输入UniProt ID，如: P0DTC2',
-    ddi: '输入药物B的SMILES表达式',
-    ppi: selectedInputType.value === 'pdb' ? '输入PDB ID，如: 6LU7' : '输入UniProt ID，如: P05067'
+    dti: '粘贴靶点蛋白氨基酸序列，至少 31 个残基',
+    ddi: '搜索并选择药物 B',
+    ppi: '粘贴蛋白质 B 的氨基酸序列，至少 31 个残基'
   }
   return placeholders[selectedType.value] || ''
 }
@@ -590,17 +662,20 @@ const handleDemoPredict = async () => {
   // 根据当前预测类型填充演示输入
   if (selectedType.value === 'dti') {
     firstInputValue.value = 'C(=O)(C(=O)O)NC(CCC(=O)O)C(=O)O'
-    secondInputValue.value = 'P0DTC2'
+    secondInputValue.value = EXAMPLE_SEQUENCES.dti
   } else if (selectedType.value === 'ppi') {
-    firstInputValue.value = 'MGLGLGQ'
-    secondInputValue.value = 'MVHLTEK'
+    firstInputValue.value = EXAMPLE_SEQUENCES.ppiA
+    secondInputValue.value = EXAMPLE_SEQUENCES.ppiB
   } else {
-    firstInputValue.value = 'CC(=O)OC1=CC=CC=C1C(=O)O'
-    secondInputValue.value = 'C1CCCCC1'
+    if (ddiDrugs.value.length < 2) {
+      await loadDdiDrugs()
+    }
+    firstInputValue.value = ddiDrugs.value[0] ?? ''
+    secondInputValue.value = ddiDrugs.value[1] ?? ''
   }
-  firstInputError.value = ''
-  secondInputError.value = ''
-  
+  validateFirstInput()
+  validateSecondInput()
+
   await handlePredict()
 }
 
@@ -616,7 +691,7 @@ const handlePredict = async () => {
     if (selectedType.value === 'dti') {
       response = await predictApi.predictDTI({
         smiles: firstInputValue.value.trim(),
-        targetId: secondInputValue.value.trim()
+        targetSeq: secondInputValue.value.trim()
       })
     } else if (selectedType.value === 'ppi') {
       response = await predictApi.predictPPI({
@@ -625,8 +700,8 @@ const handlePredict = async () => {
       })
     } else {
       response = await predictApi.predictDDI({
-        drugASmiles: firstInputValue.value.trim(),
-        drugBSmiles: secondInputValue.value.trim()
+        drugA: firstInputValue.value.trim(),
+        drugB: secondInputValue.value.trim()
       })
     }
     predictionResult.value = response as unknown as PredictionResult
@@ -1858,6 +1933,27 @@ const goHistoryVisualization = (item: PredictResultResponse) => {
   &:hover { color: $error-color; background: rgba(239, 68, 68, 0.08); }
 }
 
+.pc__input-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pc__example {
+  border: none;
+  background: rgba(59, 130, 246, 0.08);
+  color: $accent-color;
+  cursor: pointer;
+  font-size: $font-size-xs;
+  padding: 2px 8px;
+  border-radius: $border-radius-sm;
+  &:hover { background: rgba(59, 130, 246, 0.15); }
+}
+
+.pc__select {
+  width: 100%;
+}
+
 .pc__input {
   width: 100%;
   padding: $spacing-md;
@@ -1876,6 +1972,12 @@ const goHistoryVisualization = (item: PredictResultResponse) => {
   &--error {
     border-color: $error-color;
     &:focus { box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12); }
+  }
+  &--textarea {
+    resize: vertical;
+    min-height: 88px;
+    line-height: 1.5;
+    font-family: monospace;
   }
 }
 

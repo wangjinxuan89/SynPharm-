@@ -45,6 +45,7 @@ const navItems = [
   { path: '/dashboard', label: '仪表盘', icon: '📊' },
   { path: '/predict', label: '预测中心', icon: '🎯' },
   { path: '/results', label: '预测结果', icon: '📈' },
+  { path: '/favorites', label: '我的收藏', icon: '⭐' },
   { path: '/tasks', label: '任务管理', icon: '📋' },
   { path: '/targets', label: '靶点库', icon: '🧪' },
   { path: '/visualization', label: '3D可视化', icon: '🧫' },

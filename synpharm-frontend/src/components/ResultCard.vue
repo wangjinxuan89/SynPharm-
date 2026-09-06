@@ -60,6 +60,13 @@
       <div class="result-card__actions">
         <button class="result-card__action-btn" @click="$emit('detail', result)">详情</button>
         <button class="result-card__action-btn result-card__action-btn--primary" @click="$emit('3d', result)">3D</button>
+        <button
+          class="result-card__action-btn"
+          :class="{ 'result-card__action-btn--favorited': favorited }"
+          @click="$emit('favorite', result)"
+        >
+          {{ favorited ? '★ 已收藏' : '☆ 收藏' }}
+        </button>
         <el-button type="danger" size="small" @click="$emit('delete', result)">删除</el-button>
       </div>
     </div>
@@ -71,12 +78,14 @@ import type { PredictionResult } from '@/types'
 
 defineProps<{
   result: PredictionResult
+  favorited?: boolean
 }>()
 
 defineEmits<{
   (e: 'detail', result: PredictionResult): void
   (e: '3d', result: PredictionResult): void
   (e: 'delete', result: PredictionResult): void
+  (e: 'favorite', result: PredictionResult): void
 }>()
 
 const getConfidenceColor = (score: number): string => {
@@ -346,10 +355,20 @@ const formatDate = (dateString: string): string => {
     background: $primary-color;
     color: #ffffff;
     border-color: $primary-color;
-    
+
     &:hover {
       background: $primary-dark;
       border-color: $primary-dark;
+    }
+  }
+
+  &--favorited {
+    color: #f59e0b;
+    border-color: #f59e0b;
+
+    &:hover {
+      background: rgba(245, 158, 11, 0.1);
+      border-color: #f59e0b;
     }
   }
 }

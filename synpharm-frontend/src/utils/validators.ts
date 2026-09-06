@@ -103,6 +103,60 @@ export const validateSmiles = (value: string): ValidationResult => {
   }
 }
 
+/**
+ * 蛋白质氨基酸序列校验。
+ * 去空白与连字符（-）后，要求为合法的单字母氨基酸序列且 ≥ 31 残基
+ * （KAN-MoDTI 靶点 / FlashPPI 蛋白输入的最低长度）。
+ */
+export const validateProteinSequence = (value: string): ValidationResult => {
+  const trimmed = value.trim()
+
+  if (!trimmed) {
+    return {
+      inputType: 'sequence',
+      inputValue: value,
+      isValid: false,
+      message: '请输入氨基酸序列'
+    }
+  }
+
+  const cleaned = trimmed.replace(/[\s-]+/g, '')
+  if (!cleaned) {
+    return {
+      inputType: 'sequence',
+      inputValue: value,
+      isValid: false,
+      message: '请输入氨基酸序列'
+    }
+  }
+
+  if (!/^[A-Z]+$/i.test(cleaned)) {
+    return {
+      inputType: 'sequence',
+      inputValue: value,
+      isValid: false,
+      message: '序列包含非法字符，仅支持氨基酸单字母代码',
+      suggestions: ['去除数字、标点与特殊符号']
+    }
+  }
+
+  if (cleaned.length < 31) {
+    return {
+      inputType: 'sequence',
+      inputValue: value,
+      isValid: false,
+      message: `序列至少需 31 个氨基酸残基（当前 ${cleaned.length} 个）`
+    }
+  }
+
+  return {
+    inputType: 'sequence',
+    inputValue: value,
+    isValid: true,
+    message: '有效'
+  }
+}
+
 export const validateCsvFile = (fileName: string): ValidationResult => {
   if (!fileName) {
     return {

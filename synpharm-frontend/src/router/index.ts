@@ -36,6 +36,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/favorites',
+      name: 'Favorites',
+      component: () => import('@/views/Favorites.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/tasks',
       name: 'Tasks',
       component: () => import('@/views/Tasks.vue'),

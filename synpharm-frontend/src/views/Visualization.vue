@@ -334,7 +334,7 @@
 
             </div>
 
-            <div class="visualization__info-row">
+            <div v-if="bindingAffinity !== null" class="visualization__info-row">
 
               <span class="visualization__info-label">
                 结合亲和力

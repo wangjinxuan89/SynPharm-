@@ -1,14 +1,12 @@
 package com.synpharm.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.synpharm.dto.response.PredictResultResponse;
 import com.synpharm.exception.BusinessException;
 import com.synpharm.exception.ErrorCode;
 import com.synpharm.model.entity.PredictResult;
 import com.synpharm.repository.mapper.PredictResultMapper;
+import com.synpharm.service.ResultResponseAssembler;
 import com.synpharm.service.ResultService;
 import com.synpharm.utils.JwtUtils;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +35,7 @@ public class ResultServiceImpl implements ResultService {
 
     private final PredictResultMapper resultMapper;
     private final JwtUtils jwtUtils;
-    private final ObjectMapper objectMapper;
+    private final ResultResponseAssembler assembler;
 
     @Override
     public Object listResults(String token, Integer page, Integer pageSize) {
@@ -59,7 +57,7 @@ public class ResultServiceImpl implements ResultService {
 
         List<PredictResultResponse> list = new ArrayList<>();
         for (PredictResult entity : sub) {
-            list.add(convertToResponse(entity));
+            list.add(assembler.toResponse(entity));
         }
 
         Map<String, Object> result = new HashMap<>();
@@ -79,7 +77,7 @@ public class ResultServiceImpl implements ResultService {
         if (entity == null) {
             throw new BusinessException(ErrorCode.RESULT_NOT_FOUND);
         }
-        return convertToResponse(entity);
+        return assembler.toResponse(entity);
     }
 
     @Override
@@ -104,55 +102,5 @@ public class ResultServiceImpl implements ResultService {
             actual = token.substring(7);
         }
         return jwtUtils.getUserIdFromToken(actual);
-    }
-
-    private PredictResultResponse convertToResponse(PredictResult entity) {
-        String algoType = null;
-        if (entity.getPredictionData() != null) {
-            try {
-                JsonNode node = objectMapper.readTree(entity.getPredictionData());
-                if (node.has("algoType") && !node.get("algoType").isNull()) {
-                    algoType = node.get("algoType").asText();
-                }
-            } catch (Exception ignored) {
-                // 提取失败则 algoType 为 null
-            }
-        }
-
-        return PredictResultResponse.builder()
-                .id(entity.getId())
-                .algoType(algoType)
-                .targetId(entity.getTargetId())
-                .targetName(entity.getTargetName())
-                .ligandSmiles(entity.getLigandSmiles())
-                .bindingAffinity(entity.getBindingAffinity())
-                .confidenceScore(entity.getConfidenceScore())
-                .confidenceLevel(entity.getConfidenceLevel())
-                .interactions(parseInteractions(entity.getInteractions()))
-                .createdAt(entity.getCreatedAt())
-                .datasetInfo(defaultDatasetInfo(algoType))
-                .build();
-    }
-
-    private PredictResultResponse.DatasetInfo defaultDatasetInfo(String algoType) {
-        return PredictResultResponse.DatasetInfo.builder()
-                .name(algoType == null ? "AI预测" : algoType + "预测结果")
-                .size(0)
-                .description("由 FastAPI 算法引擎计算")
-                .source("fastapi")
-                .build();
-    }
-
-    private List<PredictResultResponse.InteractionInfo> parseInteractions(String json) {
-        if (json == null || json.isBlank()) {
-            return new ArrayList<>();
-        }
-        try {
-            return objectMapper.readValue(json, new TypeReference<List<PredictResultResponse.InteractionInfo>>() {
-            });
-        } catch (Exception e) {
-            log.warn("相互作用JSON解析失败: {}", e.getMessage());
-            return new ArrayList<>();
-        }
     }
 }

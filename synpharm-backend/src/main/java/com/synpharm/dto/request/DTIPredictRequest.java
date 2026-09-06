@@ -18,7 +18,7 @@ public class DTIPredictRequest {
     @NotBlank(message = "SMILES不能为空")
     private String smiles;
 
-    /** 靶点蛋白ID */
-    @NotBlank(message = "靶点ID不能为空")
-    private String targetId;
+    /** 靶点蛋白氨基酸序列（KAN-MoDTI 需要 ≥31 残基的序列，非 UniProt/PDB ID） */
+    @NotBlank(message = "靶点序列不能为空")
+    private String targetSeq;
 }

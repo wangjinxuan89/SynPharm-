@@ -1,8 +1,6 @@
 package com.synpharm.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.synpharm.dto.request.DDIPredictRequest;
 import com.synpharm.dto.request.DTIPredictRequest;
@@ -15,6 +13,7 @@ import com.synpharm.pipeline.PipelineFactory;
 import com.synpharm.repository.mapper.PredictResultMapper;
 import com.synpharm.repository.mapper.PredictTaskMapper;
 import com.synpharm.service.PredictService;
+import com.synpharm.service.ResultResponseAssembler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,6 +33,7 @@ public class PredictServiceImpl implements PredictService {
     private final PredictTaskMapper taskMapper;
     private final PredictResultMapper resultMapper;
     private final ObjectMapper objectMapper;
+    private final ResultResponseAssembler assembler;
 
     @Override
     @Deprecated
@@ -43,7 +43,7 @@ public class PredictServiceImpl implements PredictService {
                 .inputType("smiles")
                 .algoType("DTI")
                 .outputType("json")
-                .inputValue(request.getSmiles() + "," + request.getTargetId())
+                .inputValue(request.getSmiles() + "," + request.getTargetSeq())
                 .build(), userId);
     }
 
@@ -67,7 +67,7 @@ public class PredictServiceImpl implements PredictService {
                 .inputType("smiles")
                 .algoType("DDI")
                 .outputType("json")
-                .inputValue(request.getDrugASmiles() + "," + request.getDrugBSmiles())
+                .inputValue(request.getDrugA() + "," + request.getDrugB())
                 .build(), userId);
     }
 
@@ -100,7 +100,7 @@ public class PredictServiceImpl implements PredictService {
         );
         List<PredictResultResponse> list = new ArrayList<>();
         for (PredictResult entity : entities) {
-            list.add(convertToResponse(entity));
+            list.add(assembler.toResponse(entity));
         }
         return list;
     }
@@ -182,56 +182,4 @@ public class PredictServiceImpl implements PredictService {
         }
     }
 
-    /**
-     * 实体转响应DTO（反序列化 interactions / 从 predictionData 提取 algoType）。
-     */
-    private PredictResultResponse convertToResponse(PredictResult entity) {
-        String algoType = null;
-        if (entity.getPredictionData() != null) {
-            try {
-                JsonNode node = objectMapper.readTree(entity.getPredictionData());
-                if (node.has("algoType") && !node.get("algoType").isNull()) {
-                    algoType = node.get("algoType").asText();
-                }
-            } catch (Exception ignored) {
-                // 提取失败则 algoType 为 null
-            }
-        }
-
-        return PredictResultResponse.builder()
-                .id(entity.getId())
-                .algoType(algoType)
-                .targetId(entity.getTargetId())
-                .targetName(entity.getTargetName())
-                .ligandSmiles(entity.getLigandSmiles())
-                .bindingAffinity(entity.getBindingAffinity())
-                .confidenceScore(entity.getConfidenceScore())
-                .confidenceLevel(entity.getConfidenceLevel())
-                .interactions(parseInteractions(entity.getInteractions()))
-                .createdAt(entity.getCreatedAt())
-                .datasetInfo(defaultDatasetInfo(algoType))
-                .build();
-    }
-
-    private PredictResultResponse.DatasetInfo defaultDatasetInfo(String algoType) {
-        return PredictResultResponse.DatasetInfo.builder()
-                .name(algoType == null ? "AI预测" : algoType + "预测结果")
-                .size(0)
-                .description("由 FastAPI 算法引擎计算")
-                .source("fastapi")
-                .build();
-    }
-
-    private List<PredictResultResponse.InteractionInfo> parseInteractions(String json) {
-        if (json == null || json.isBlank()) {
-            return new ArrayList<>();
-        }
-        try {
-            return objectMapper.readValue(json, new TypeReference<List<PredictResultResponse.InteractionInfo>>() {
-            });
-        } catch (Exception e) {
-            log.warn("相互作用JSON解析失败: {}", e.getMessage());
-            return new ArrayList<>();
-        }
-    }
 }

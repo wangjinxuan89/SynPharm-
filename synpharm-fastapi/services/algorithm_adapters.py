@@ -59,7 +59,7 @@ def _get_or_load(key: str, loader):
 # --------------------------------------------------------------------------- #
 # DDI-LLM：转导式 GCN，图内药物点积 -> sigmoid 概率
 # --------------------------------------------------------------------------- #
-def _load_ddi_predictor():
+def _load_ddi():
     base = MODELS_DIR / "DDI-LLM"
     ckpt_path = base / "weights" / "ddi_gcn_morgan.pt"
     if not ckpt_path.exists():
@@ -87,12 +87,19 @@ def _load_ddi_predictor():
         return float(torch.sigmoid(torch.tensor(logit)).item())
 
     logger.info("[DDI-LLM] 权重加载完成（%d 个图内药物）", len(node_id_map))
-    return predict
+    return predict, node_id_map
 
 
 def get_ddi_predictor():
     """返回 ``(drug_a, drug_b) -> 概率`` 的可调用对象；加载失败返回 None。"""
-    return _get_or_load("ddi", _load_ddi_predictor)
+    loaded = _get_or_load("ddi", _load_ddi)
+    return loaded[0] if loaded else None
+
+
+def get_ddi_drug_list():
+    """返回训练图内药物（DrugBank ID）的排序列表；加载失败返回 None。"""
+    loaded = _get_or_load("ddi", _load_ddi)
+    return sorted(loaded[1].keys()) if loaded else None
 
 
 # --------------------------------------------------------------------------- #

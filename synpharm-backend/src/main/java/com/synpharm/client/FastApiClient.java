@@ -1,5 +1,6 @@
 package com.synpharm.client;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.synpharm.dto.request.PredictRequest;
@@ -68,6 +69,33 @@ public class FastApiClient {
         } catch (Exception e) {
             log.error("FastAPI批量预测调用失败", e);
             throw new BusinessException(ErrorCode.PREDICT_ERROR, "批量预测服务不可用，请稍后重试");
+        }
+    }
+
+    /**
+     * 获取 DDI 训练图内药物（DrugBank ID）列表，供前端下拉选择。
+     * <p>对应 FastAPI 的 {@code GET /v1/predict/ddi/drugs}，返回体 {@code {"drugs":[...],"count":N}}。
+     */
+    public List<String> getDdiDrugs() {
+        log.info("调用FastAPI获取DDI药物列表");
+        try {
+            JsonNode node = fastApiWebClient.get()
+                    .uri("/v1/predict/ddi/drugs")
+                    .retrieve()
+                    .bodyToMono(JsonNode.class)
+                    .timeout(singleTimeout)
+                    .block();
+            if (node == null || !node.has("drugs") || node.get("drugs").isNull()) {
+                return List.of();
+            }
+            return objectMapper.convertValue(node.get("drugs"), new TypeReference<List<String>>() {
+            });
+        } catch (WebClientResponseException e) {
+            log.error("FastAPI获取DDI药物列表HTTP错误: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw translateError(e);
+        } catch (Exception e) {
+            log.error("FastAPI获取DDI药物列表失败", e);
+            throw new BusinessException(ErrorCode.PREDICT_ERROR, "药物列表服务不可用，请稍后重试");
         }
     }
 

@@ -8,7 +8,8 @@ from services.dti_service import DTIService
 from services.ppi_service import PPIService
 from services.ddi_service import DDIService
 from services.batch_service import BatchPredictor
-from core.exceptions import PredictionError, InvalidInputError
+from services.algorithm_adapters import get_ddi_drug_list
+from core.exceptions import PredictionError, InvalidInputError, ModelNotFoundError
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -79,3 +80,12 @@ async def predict_batch(req: BatchPredictionRequest):
     except Exception as e:
         logger.error(f"Batch prediction failed: {str(e)}", exc_info=True)
         raise PredictionError(f"批量预测失败: {str(e)}")
+
+
+@router.get("/ddi/drugs")
+async def get_ddi_drugs():
+    """返回 DDI 训练图内药物（DrugBank ID）列表，供前端下拉选择。"""
+    drugs = get_ddi_drug_list()
+    if drugs is None:
+        raise ModelNotFoundError("DDI")
+    return {"status": "success", "drugs": drugs, "count": len(drugs)}

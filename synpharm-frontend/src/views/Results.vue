@@ -39,9 +39,11 @@
               v-for="result in filteredResults"
               :key="String(result.id)"
               :result="result"
+              :favorited="favoritedIds.includes(String(result.id))"
               @detail="handleResultDetail"
               @3d="handleResult3D"
               @delete="handleResultDelete"
+              @favorite="handleFavorite"
             />
           </div>
 
@@ -61,6 +63,7 @@ import { reactive, computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { resultApi } from '@/api/predict'
+import { favoriteApi } from '@/api/favorite'
 import Sidebar from '@/components/Sidebar.vue'
 import ResultCard from '@/components/ResultCard.vue'
 import type { PredictionResult } from '@/types'
@@ -74,6 +77,7 @@ const filters = reactive({
 const results = ref<PredictionResult[]>([])
 const loading = ref(false)
 const loadError = ref('')
+const favoritedIds = ref<string[]>([])
 
 const loadResults = async () => {
   loading.value = true
@@ -88,7 +92,19 @@ const loadResults = async () => {
   }
 }
 
-onMounted(loadResults)
+const loadFavoritedIds = async () => {
+  try {
+    const page = await favoriteApi.list(1, 100)
+    favoritedIds.value = page.list.map(r => String(r.id))
+  } catch {
+    // 收藏状态加载失败不阻断结果列表展示
+  }
+}
+
+onMounted(() => {
+  loadResults()
+  loadFavoritedIds()
+})
 
 const filteredResults = computed(() => {
   let list = [...results.value]
@@ -157,6 +173,24 @@ const handleResultDelete = async (result: PredictionResult) => {
     await loadResults()
   } catch (error: unknown) {
     ElMessage.error(error instanceof Error ? error.message : '删除失败')
+  }
+}
+
+const handleFavorite = async (result: PredictionResult) => {
+  const key = String(result.id)
+  const isFavorited = favoritedIds.value.includes(key)
+  try {
+    if (isFavorited) {
+      await favoriteApi.remove(result.id)
+      favoritedIds.value = favoritedIds.value.filter(id => id !== key)
+      ElMessage.success('已取消收藏')
+    } else {
+      await favoriteApi.add(result.id)
+      favoritedIds.value = [...favoritedIds.value, key]
+      ElMessage.success('已收藏')
+    }
+  } catch (error: unknown) {
+    ElMessage.error(error instanceof Error ? error.message : '收藏操作失败')
   }
 }
 </script>

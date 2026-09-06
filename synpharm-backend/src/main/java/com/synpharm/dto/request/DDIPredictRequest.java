@@ -14,11 +14,11 @@ import lombok.Data;
 @Data
 public class DDIPredictRequest {
 
-    /** 药物A的SMILES表达式 */
-    @NotBlank(message = "药物A SMILES不能为空")
-    private String drugASmiles;
+    /** 药物A标识（DrugBank ID，须在 DDI-LLM 训练图内） */
+    @NotBlank(message = "药物A不能为空")
+    private String drugA;
 
-    /** 药物B的SMILES表达式 */
-    @NotBlank(message = "药物B SMILES不能为空")
-    private String drugBSmiles;
+    /** 药物B标识（DrugBank ID，须在 DDI-LLM 训练图内） */
+    @NotBlank(message = "药物B不能为空")
+    private String drugB;
 }
