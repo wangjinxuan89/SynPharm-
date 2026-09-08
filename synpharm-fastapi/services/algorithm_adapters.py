@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import sys
+import threading
 from pathlib import Path
 
 import torch
@@ -29,6 +30,8 @@ MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 
 _UNSET = object()
 _cache: dict = {}
+_load_lock = threading.Lock()
+_status: dict = {"dti": "unloaded", "ppi": "unloaded", "ddi": "unloaded"}
 
 
 def _auto_device() -> str:
@@ -46,14 +49,30 @@ def _load_module(module_name: str, file_path: Path):
 
 
 def _get_or_load(key: str, loader):
-    """懒加载 + 缓存（缓存 None 表示加载失败，不重试）。"""
-    if key not in _cache:
+    """懒加载 + 缓存 + 加载锁 + 状态跟踪。
+
+    - 加载锁避免多线程并发重复加载同一权重；
+    - 加载结果（含 None=失败）缓存，不重试；
+    - 同步维护 ``_status``，供 ``/health`` 反映真实模型就绪状态。
+    """
+    if key in _cache:
+        return _cache[key]
+
+    with _load_lock:
+        if key in _cache:  # 双重检查，锁内再次确认
+            return _cache[key]
+
+        _status[key] = "loading"
         try:
-            _cache[key] = loader()
+            loaded = loader()
         except Exception as e:  # noqa: BLE001 —— 兜底，任何异常都缓存 None
             logger.warning("加载 %s 失败: %s", key, e)
             _cache[key] = None
-    return _cache[key]
+            _status[key] = "unavailable"
+        else:
+            _cache[key] = loaded
+            _status[key] = "ready" if loaded is not None else "unavailable"
+        return _cache[key]
 
 
 # --------------------------------------------------------------------------- #
@@ -152,3 +171,14 @@ def _load_ppi_predictor():
 def get_ppi_predictor():
     """返回 ``FlashPPIPredictor`` 实例；加载失败返回 None。"""
     return _get_or_load("ppi", _load_ppi_predictor)
+
+
+# --------------------------------------------------------------------------- #
+# 模型就绪状态（供 /health 反映真实模型状态，区分服务存活与模型是否可用）
+# --------------------------------------------------------------------------- #
+_ALGO_NAMES = {"dti": "DTI", "ppi": "PPI", "ddi": "DDI"}
+
+
+def get_model_status() -> dict:
+    """返回三个算法的就绪状态：ready / loading / unavailable / unloaded。"""
+    return {name: _status.get(key, "unloaded") for key, name in _ALGO_NAMES.items()}

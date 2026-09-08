@@ -1,6 +1,7 @@
 from core.schemas import PredictionMetrics
 from core.base_algo import BaseAlgo
-from core.exceptions import InvalidInputError, ModelNotFoundError
+from core.exceptions import InvalidSequenceError, ModelNotFoundError
+from core.validation import validate_sequence
 from services.algorithm_adapters import get_ppi_predictor
 
 
@@ -17,8 +18,12 @@ class PPIService(BaseAlgo):
         return self._predictor
 
     def predict(self, data: dict) -> PredictionMetrics:
-        protein_a = data.get("protein_a", "")
-        protein_b = data.get("protein_b", "")
+        protein_a = data.get("protein_a") or ""
+        protein_b = data.get("protein_b") or ""
+
+        # 防御性校验 + 标准化
+        protein_a = validate_sequence(protein_a, field="protein_a")
+        protein_b = validate_sequence(protein_b, field="protein_b")
 
         predictor = self._get_predictor()
         if predictor is None:
@@ -29,7 +34,7 @@ class PPIService(BaseAlgo):
         try:
             result = predictor.predict(protein_a, protein_b)
         except ValueError as e:
-            raise InvalidInputError(str(e))
+            raise InvalidSequenceError(str(e), field="protein_a")
         return self._to_metrics(result)
 
     def _to_metrics(self, result: dict) -> PredictionMetrics:
@@ -37,9 +42,13 @@ class PPIService(BaseAlgo):
         return PredictionMetrics(
             target_id="PPI_TARGET",
             target_name="蛋白质相互作用",
+            binding_affinity=None,
+            binding_affinity_available=False,
             confidence_score=round(contact_score, 4),
             confidence_level=_confidence_level(contact_score),
-            interactions=[]
+            interactions=[],
+            explanation_available=False,
+            explanation_message="当前模型仅提供整体预测分数",
         )
 
 

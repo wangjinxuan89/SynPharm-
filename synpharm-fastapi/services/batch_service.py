@@ -1,5 +1,6 @@
 from typing import List
 import logging
+from core.exceptions import PredictionError, InvalidInputError, ErrorCode
 from services.dti_service import DTIService
 from services.ppi_service import PPIService
 from services.ddi_service import DDIService
@@ -15,18 +16,35 @@ class BatchPredictor:
         self.ddi_engine = DDIService()
 
     def run(self, data_list: List[dict], algo_type: str) -> List[dict]:
+        """逐行预测，返回结构化结果（成功带 metrics，失败带 error_code/error_message）。"""
         results = []
         engine = self._get_engine(algo_type)
 
-        for item in data_list:
+        for i, item in enumerate(data_list):
+            row_number = i + 1
             try:
                 result = engine.predict(item)
-                result_dict = result.dict()
-                result_dict.update(item)
-                results.append(result_dict)
-            except Exception as e:
-                logger.warning("批量预测单条失败: %s", e)
-                results.append({"error": str(e), **item})
+                results.append({
+                    "row_number": row_number,
+                    "status": "success",
+                    "metrics": result.model_dump(),
+                })
+            except PredictionError as e:
+                logger.warning("批量预测第 %d 行失败: [%s] %s", row_number, e.code, e.message)
+                results.append({
+                    "row_number": row_number,
+                    "status": "failed",
+                    "error_code": e.code,
+                    "error_message": e.message,
+                })
+            except Exception as e:  # noqa: BLE001 —— 单行兜底，不影响后续行
+                logger.warning("批量预测第 %d 行异常: %s", row_number, e)
+                results.append({
+                    "row_number": row_number,
+                    "status": "failed",
+                    "error_code": ErrorCode.INTERNAL_ERROR,
+                    "error_message": str(e),
+                })
 
         return results
 
@@ -38,4 +56,4 @@ class BatchPredictor:
         elif algo_type == "DDI":
             return self.ddi_engine
         else:
-            raise ValueError(f"Unknown algo_type: {algo_type}")
+            raise InvalidInputError(f"未知算法类型: {algo_type}")

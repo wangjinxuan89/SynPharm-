@@ -1,5 +1,6 @@
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
+
 from core.schemas import (
     SingleRequest, BatchPredictionRequest,
     AlgoResponse, BatchPredictionResponse
@@ -24,62 +25,48 @@ batch_predictor = BatchPredictor()
 
 @router.post("/single", response_model=AlgoResponse)
 async def predict_single(req: SingleRequest):
-    logger.info(f"Single prediction request: algo_type={req.algo_type}")
-    
-    try:
-        if req.algo_type == "DTI":
-            if not req.drug_smiles or not req.target_seq:
-                raise InvalidInputError("DTI预测需要drug_smiles和target_seq")
-            result = dti_engine.predict({
-                "drug_smiles": req.drug_smiles,
-                "target_seq": req.target_seq
-            })
-        elif req.algo_type == "PPI":
-            if not req.protein_a or not req.protein_b:
-                raise InvalidInputError("PPI预测需要protein_a和protein_b")
-            result = ppi_engine.predict({
-                "protein_a": req.protein_a,
-                "protein_b": req.protein_b
-            })
-        elif req.algo_type == "DDI":
-            if not req.drug_a or not req.drug_b:
-                raise InvalidInputError("DDI预测需要drug_a和drug_b")
-            result = ddi_engine.predict({
-                "drug_a": req.drug_a,
-                "drug_b": req.drug_b
-            })
-        else:
-            raise InvalidInputError(f"未知算法类型: {req.algo_type}")
+    logger.info("Single prediction request: algo_type=%s", req.algo_type)
 
-        logger.info(f"Single prediction completed: algo_type={req.algo_type}")
-        return {"status": "success", "metrics": result}
-    
-    except InvalidInputError:
+    try:
+        result = _dispatch(req.algo_type, req)
+    except PredictionError:
         raise
     except Exception as e:
-        logger.error(f"Prediction failed: {str(e)}", exc_info=True)
-        raise PredictionError(f"预测失败: {str(e)}")
+        logger.error("Prediction failed: %s", e, exc_info=True)
+        raise PredictionError("预测失败: " + str(e))
+
+    logger.info("Single prediction completed: algo_type=%s", req.algo_type)
+    return {"status": "success", "metrics": result}
 
 
 @router.post("/batch", response_model=BatchPredictionResponse)
 async def predict_batch(req: BatchPredictionRequest):
-    logger.info(f"Batch prediction request: algo_type={req.algo_type}, size={len(req.data_list)}")
-    
+    logger.info("Batch prediction request: algo_type=%s, size=%d", req.algo_type, len(req.data_list))
+
     if len(req.data_list) > settings.max_batch_size:
         raise InvalidInputError(f"批量大小超过限制，最大{settings.max_batch_size}条")
-    
+
     try:
-        data_list = [item.dict() for item in req.data_list]
+        data_list = [item.model_dump() for item in req.data_list]
         results = batch_predictor.run(data_list, req.algo_type)
-        
-        logger.info(f"Batch prediction completed: algo_type={req.algo_type}, results={len(results)}")
-        return {"status": "success", "total": len(results), "results": results}
-    
-    except InvalidInputError:
+    except PredictionError:
         raise
     except Exception as e:
-        logger.error(f"Batch prediction failed: {str(e)}", exc_info=True)
-        raise PredictionError(f"批量预测失败: {str(e)}")
+        logger.error("Batch prediction failed: %s", e, exc_info=True)
+        raise PredictionError("批量预测失败: " + str(e))
+
+    success_count = sum(1 for r in results if r["status"] == "success")
+    fail_count = len(results) - success_count
+
+    logger.info("Batch prediction completed: algo_type=%s, success=%d, fail=%d",
+                req.algo_type, success_count, fail_count)
+    return {
+        "status": "success",
+        "total": len(results),
+        "success_count": success_count,
+        "fail_count": fail_count,
+        "results": results,
+    }
 
 
 @router.get("/ddi/drugs")
@@ -89,3 +76,13 @@ async def get_ddi_drugs():
     if drugs is None:
         raise ModelNotFoundError("DDI")
     return {"status": "success", "drugs": drugs, "count": len(drugs)}
+
+
+def _dispatch(algo_type: str, req: SingleRequest):
+    if algo_type == "DTI":
+        return dti_engine.predict({"drug_smiles": req.drug_smiles, "target_seq": req.target_seq})
+    if algo_type == "PPI":
+        return ppi_engine.predict({"protein_a": req.protein_a, "protein_b": req.protein_b})
+    if algo_type == "DDI":
+        return ddi_engine.predict({"drug_a": req.drug_a, "drug_b": req.drug_b})
+    raise InvalidInputError(f"未知算法类型: {algo_type}")
